@@ -68,6 +68,7 @@ import {
   renderStoredJobResult,
   renderTaskResult
 } from "./lib/render.mjs";
+import { invokeDirect, isStubError } from "./lib/delegate.mjs";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -101,15 +102,40 @@ function resolveCompanionScript(agent) {
   );
 }
 
-function delegateToAgent(agent, argv) {
+async function delegateToAgent(agent, argv) {
   const script = resolveCompanionScript(agent);
   const result = spawnSync(process.execPath, [script, ...argv], {
-    stdio: "inherit",
+    stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
-    cwd: process.cwd()
+    cwd: process.cwd(),
+    encoding: "utf8"
   });
-  if (typeof result.status === "number") process.exit(result.status);
-  process.exit(result.error ? 1 : 0);
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  const stubDetected = isStubError(stderr, stdout);
+
+  if (!stubDetected && typeof result.status === "number") {
+    process.stdout.write(stdout);
+    if (stderr) process.stderr.write(stderr);
+    process.exit(result.error ? 1 : result.status);
+    return;
+  }
+
+  process.stderr.write(
+    `> ${agent} companion is a stub; falling back to direct ${agent} CLI invocation\n`
+  );
+
+  try {
+    const positionalArgs = argv.filter((a) => !a.startsWith("--") && !a.startsWith("-"));
+    const promptArg = positionalArgs.length > 1 ? positionalArgs[positionalArgs.length - 1] : (positionalArgs[0] ?? "");
+    const fallback = await invokeDirect(agent, promptArg || "(no prompt)", process.cwd(), { timeoutMs: 60_000 });
+    process.stdout.write(`${fallback.stdout}\n`);
+    process.exit(0);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`> Direct fallback failed: ${message}\n`);
+    process.exit(1);
+  }
 }
 
 function printUsage() {
@@ -525,7 +551,7 @@ async function handleTask(argv) {
     const agent = String(options["delegate-to"]);
     const subcommand = process.argv[2];
     const remaining = process.argv.slice(3).filter((arg) => !arg.startsWith("--delegate-to=") && arg !== "--delegate-to");
-    delegateToAgent(agent, [subcommand, ...remaining]);
+    await delegateToAgent(agent, [subcommand, ...remaining]);
     return;
   }
 
