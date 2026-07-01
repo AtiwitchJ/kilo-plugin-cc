@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 import { parseArgs, splitRawArgumentString } from "./lib/args.mjs";
 import {
@@ -69,7 +70,47 @@ import {
 } from "./lib/render.mjs";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-const REVIEW_SCHEMA = path.join(ROOT_DIR, "schemas", "review-output.schema.json");
+
+/** Known companion scripts for cross-agent delegation. */
+const KNOWN_COMPANIONS = {
+  kilo: "kilo-plugin-cc",
+  claude: "claude-plugin-cc",
+  openclaw: "openclaw-plugin-cc",
+  opencode: "opencode-plugin-cc",
+  antigravity: "antigravity-plugin-cc",
+  cursor: "cursor-plugin-cc",
+  hermes: "hermes-plugin-cc",
+  jules: "jules-plugin-cc"
+};
+
+function resolveCompanionScript(agent) {
+  const repo = KNOWN_COMPANIONS[agent];
+  if (!repo) {
+    throw new Error(`Unknown agent "${agent}". Known: ${Object.keys(KNOWN_COMPANIONS).join(", ")}`);
+  }
+  const candidates = [
+    path.join("D:\\mind", repo, "plugins", agent, "scripts", `${agent}-companion.mjs`),
+    path.join(process.cwd(), "..", repo, "plugins", agent, "scripts", `${agent}-companion.mjs`),
+    path.resolve(ROOT_DIR, "..", "..", "..", "..", repo, "plugins", agent, "scripts", `${agent}-companion.mjs`)
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(
+    `Could not find ${agent}-companion.mjs. Tried:\n  ${candidates.join("\n  ")}`
+  );
+}
+
+function delegateToAgent(agent, argv) {
+  const script = resolveCompanionScript(agent);
+  const result = spawnSync(process.execPath, [script, ...argv], {
+    stdio: "inherit",
+    env: process.env,
+    cwd: process.cwd()
+  });
+  if (typeof result.status === "number") process.exit(result.status);
+  process.exit(result.error ? 1 : 0);
+}
 
 function printUsage() {
   console.log(
@@ -78,7 +119,7 @@ function printUsage() {
       "  node scripts/kilo-companion.mjs setup [--json]",
       "  node scripts/kilo-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <provider/model>] [--agent <name>] [--variant <effort>]",
       "  node scripts/kilo-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <provider/model>] [focus text]",
-      "  node scripts/kilo-companion.mjs task [--background] [--write] [--resume|--fresh] [--model <provider/model>] [--agent <name>] [--variant <effort>] [prompt]",
+      "  node scripts/kilo-companion.mjs task [--background] [--write] [--resume|--fresh] [--model <provider/model>] [--agent <name>] [--variant <effort>] [--delegate-to=<agent>] [prompt]",
       "  node scripts/kilo-companion.mjs status [job-id] [--all] [--json]",
       "  node scripts/kilo-companion.mjs result [job-id] [--json]",
       "  node scripts/kilo-companion.mjs cancel [job-id] [--json]",
@@ -476,9 +517,17 @@ async function handleAdversarialReview(argv) {
 
 async function handleTask(argv) {
   const { options, positionals } = parseCommandInput(argv, {
-    valueOptions: ["model", "agent", "variant", "cwd", "prompt-file"],
+    valueOptions: ["model", "agent", "variant", "cwd", "prompt-file", "delegate-to"],
     booleanOptions: ["json", "write", "resume", "fresh", "background"]
   });
+
+  if (options["delegate-to"]) {
+    const agent = String(options["delegate-to"]);
+    const subcommand = process.argv[2];
+    const remaining = process.argv.slice(3).filter((arg) => !arg.startsWith("--delegate-to=") && arg !== "--delegate-to");
+    delegateToAgent(agent, [subcommand, ...remaining]);
+    return;
+  }
 
   const cwd = resolveCommandCwd(options);
   const workspaceRoot = resolveCommandWorkspace(options);
