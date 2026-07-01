@@ -1,0 +1,21 @@
+{
+  "name": "agents-plugin-cc-kilo",
+  "owner": {
+    "name": "agents-plugin-cc"
+  },
+  "metadata": {
+    "description": "Claude Code plugin for delegating work to Kilo.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "kilo",
+      "description": "Use Kilo from Claude Code to review code or delegate tasks.",
+      "version": "0.1.0",
+      "author": {
+        "name": "agents-plugin-cc"
+      },
+      "source": "./plugins/kilo"
+    }
+  ]
+}

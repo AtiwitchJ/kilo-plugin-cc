@@ -1,0 +1,8 @@
+{
+  "name": "kilo",
+  "version": "0.1.0",
+  "description": "Use Kilo from Claude Code to review code or delegate tasks.",
+  "author": {
+    "name": "agents-plugin-cc"
+  }
+}
