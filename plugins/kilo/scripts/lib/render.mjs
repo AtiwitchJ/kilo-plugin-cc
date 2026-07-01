@@ -134,11 +134,11 @@ export function renderCancelReport(job) {
   return `# Cancellation\n- Job ID: \`${job.id}\`\n- Status: \`${job.status}\`\n- Cancelled at: ${job.completedAt ?? "(unknown)"}\n`;
 }
 
-export function renderTransferResult({ threadId, resumeCommand }) {
+export function renderTransferResult({ threadId, resumeCommand, agentName = "Kilo" }) {
   return [
-    "# Kilo transfer",
-    `Imported Claude Code session into a kilo session.`,
-    `- Kilo session ID: \`${threadId}\``,
+    `# ${agentName} transfer`,
+    `Imported Claude Code session into a ${agentName} session.`,
+    `- ${agentName} session ID: \`${threadId}\``,
     `- Resume: \`${resumeCommand}\``
   ].join("\n") + "\n";
 }
