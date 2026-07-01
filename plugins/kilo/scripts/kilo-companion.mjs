@@ -68,7 +68,13 @@ import {
   renderStoredJobResult,
   renderTaskResult
 } from "./lib/render.mjs";
-import { invokeDirect, isStubError } from "./lib/delegate.mjs";
+import {
+  createDelegateLogFile,
+  extractDelegatePrompt,
+  extractDelegateTimeoutMs,
+  invokeDirect,
+  isStubError
+} from "./lib/delegate.mjs";
 
 const ROOT_DIR = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
@@ -112,7 +118,7 @@ async function delegateToAgent(agent, argv) {
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? "";
-  const stubDetected = isStubError(stderr, stdout);
+  const stubDetected = isStubError(stderr, stdout, result.status);
 
   if (!stubDetected && typeof result.status === "number") {
     process.stdout.write(stdout);
@@ -126,9 +132,26 @@ async function delegateToAgent(agent, argv) {
   );
 
   try {
-    const positionalArgs = argv.filter((a) => !a.startsWith("--") && !a.startsWith("-"));
-    const promptArg = positionalArgs.length > 1 ? positionalArgs[positionalArgs.length - 1] : (positionalArgs[0] ?? "");
-    const fallback = await invokeDirect(agent, promptArg || "(no prompt)", process.cwd(), { timeoutMs: 60_000 });
+    // argv[0] is always the subcommand (e.g. "task"); only the args after it are prompt candidates.
+    const prompt = extractDelegatePrompt(argv.slice(1));
+    const background = argv.includes("--background");
+    const timeoutMs = extractDelegateTimeoutMs(argv);
+    const logFile = background ? createDelegateLogFile(agent) : null;
+
+    const fallback = await invokeDirect(agent, prompt || "(no prompt)", process.cwd(), {
+      timeoutMs,
+      background,
+      logFile
+    });
+
+    if (fallback.background) {
+      process.stdout.write(
+        `Delegated ${agent} task running in background (pid ${fallback.pid ?? "unknown"}).${logFile ? ` Logs: ${logFile}` : ""}\n`
+      );
+      process.exit(0);
+      return;
+    }
+
     process.stdout.write(`${fallback.stdout}\n`);
     process.exit(0);
   } catch (error) {
@@ -145,7 +168,7 @@ function printUsage() {
       "  node scripts/kilo-companion.mjs setup [--json]",
       "  node scripts/kilo-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <provider/model>] [--agent <name>] [--variant <effort>]",
       "  node scripts/kilo-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [--model <provider/model>] [focus text]",
-      "  node scripts/kilo-companion.mjs task [--background] [--write] [--resume|--fresh] [--model <provider/model>] [--agent <name>] [--variant <effort>] [--delegate-to=<agent>] [prompt]",
+      "  node scripts/kilo-companion.mjs task [--background] [--write] [--resume|--fresh] [--model <provider/model>] [--agent <name>] [--variant <effort>] [--delegate-to=<agent>] [--prompt=<text>] [--timeout=<ms>] [prompt]",
       "  node scripts/kilo-companion.mjs status [job-id] [--all] [--json]",
       "  node scripts/kilo-companion.mjs result [job-id] [--json]",
       "  node scripts/kilo-companion.mjs cancel [job-id] [--json]",
@@ -309,7 +332,8 @@ async function executeReviewRun({ cwd, base, scope, focusText, model, agent, var
     rendered: renderReviewResult(result.text, {
       reviewLabel: reviewName,
       targetLabel: target.label,
-      sessionId: result.sessionId
+      sessionId: result.sessionId,
+      agentName: "Kilo"
     }),
     summary: firstMeaningfulLine(result.text, `${reviewName} finished.`),
     jobTitle: `Kilo ${reviewName}`,
@@ -359,7 +383,8 @@ async function executeTaskRun({ cwd, model, agent, variant, prompt, write, resum
     {
       title: effectiveResume ? "Kilo Resume" : "Kilo Task",
       jobId,
-      write: Boolean(write)
+      write: Boolean(write),
+      agentName: "Kilo"
     }
   );
 
@@ -697,7 +722,7 @@ function handleResult(argv) {
   const reference = positionals[0] ?? "";
   const { workspaceRoot, job } = resolveResultJob(cwd, reference);
   const storedJob = readStoredJob(workspaceRoot, job.id);
-  outputCommandResult({ job, storedJob }, renderStoredJobResult(job, storedJob), options.json);
+  outputCommandResult({ job, storedJob }, renderStoredJobResult(job, storedJob, { agentName: "Kilo" }), options.json);
 }
 
 function handleTaskResumeCandidate(argv) {

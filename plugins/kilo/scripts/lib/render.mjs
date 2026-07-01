@@ -25,7 +25,7 @@ function renderJobHeader(job) {
   return lines.join("\n");
 }
 
-export function renderTaskResult({ text, failureMessage, reasoningSummary }, { title, jobId = null, write = false } = {}) {
+export function renderTaskResult({ text, failureMessage, reasoningSummary }, { title, jobId = null, write = false, agentName = "Kilo" } = {}) {
   const lines = [
     `# ${title ?? "Kilo task"}`,
     jobId ? `- Job ID: \`${jobId}\`` : null,
@@ -37,15 +37,15 @@ export function renderTaskResult({ text, failureMessage, reasoningSummary }, { t
   }
 
   if (text) {
-    lines.push("", "## Kilo output", fenceBlock(text));
+    lines.push("", `## ${agentName} output`, fenceBlock(text));
   } else if (!failureMessage) {
-    lines.push("", "## Kilo output", "_(no output captured)_");
+    lines.push("", `## ${agentName} output`, "_(no output captured)_");
   }
 
   return `${lines.join("\n")}\n`;
 }
 
-export function renderReviewResult(text, { reviewLabel = "Review", targetLabel = "working tree", sessionId = null } = {}) {
+export function renderReviewResult(text, { reviewLabel = "Review", targetLabel = "working tree", sessionId = null, agentName = "Kilo" } = {}) {
   const lines = [
     `# ${reviewLabel}`,
     `- Target: ${targetLabel}`,
@@ -54,7 +54,7 @@ export function renderReviewResult(text, { reviewLabel = "Review", targetLabel =
   ].filter(Boolean);
 
   if (text) {
-    lines.push("## Kilo output", fenceBlock(text));
+    lines.push(`## ${agentName} output`, fenceBlock(text));
   } else {
     lines.push("_(no review output captured)_");
   }
@@ -62,7 +62,7 @@ export function renderReviewResult(text, { reviewLabel = "Review", targetLabel =
   return `${lines.join("\n")}\n`;
 }
 
-export function renderStoredJobResult(job, storedJob) {
+export function renderStoredJobResult(job, storedJob, { agentName = "Kilo" } = {}) {
   const lines = [renderJobHeader(job)];
   if (!storedJob) {
     lines.push("", "_No stored payload for this job._");
@@ -72,7 +72,7 @@ export function renderStoredJobResult(job, storedJob) {
   const text = storedJob.text ?? storedJob.rawOutput ?? "";
   const failure = storedJob.error?.message ?? storedJob.stderr ?? storedJob.failureMessage ?? "";
 
-  if (text) lines.push("", "## Kilo output", fenceBlock(text));
+  if (text) lines.push("", `## ${agentName} output`, fenceBlock(text));
   if (failure) lines.push("", "## Stderr / error", fenceBlock(failure));
   if (!text && !failure) lines.push("", "_No payload recorded._");
 

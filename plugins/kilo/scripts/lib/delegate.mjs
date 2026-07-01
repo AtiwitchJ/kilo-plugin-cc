@@ -14,6 +14,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { readStdinIfPiped } from "./fs.mjs";
+
 /**
  * For each agent, define how to invoke its CLI binary directly as a fallback.
  *
@@ -53,10 +55,10 @@ export const DIRECT_INVOCATION = {
   },
   antigravity: {
     binary: "agy",
-    args: (prompt) => [prompt],
+    args: (prompt) => ["--print", prompt],
     shell: false,
     stdin: false,
-    description: "agy <prompt> (positional)"
+    description: "agy --print <prompt>"
   },
   cursor: {
     binary: "agent",
@@ -115,8 +117,68 @@ function quoteForShell(arg) {
   return `"${arg.replace(/"/g, '\\"')}"`;
 }
 
+const DEFAULT_TIMEOUT_MS = 60_000;
+const TIMEOUT_ENV_VAR = "CLAUDE_PLUGIN_DELEGATE_TIMEOUT_MS";
+
+function resolveTimeoutMs(requestedTimeoutMs) {
+  if (Number.isFinite(requestedTimeoutMs) && requestedTimeoutMs > 0) {
+    return requestedTimeoutMs;
+  }
+  const envTimeoutMs = Number(process.env[TIMEOUT_ENV_VAR]);
+  if (Number.isFinite(envTimeoutMs) && envTimeoutMs > 0) {
+    return envTimeoutMs;
+  }
+  return DEFAULT_TIMEOUT_MS;
+}
+
+/**
+ * Spawn a direct CLI invocation detached in the background, for `--background`
+ * delegated tasks. Resolves as soon as the process is launched instead of
+ * waiting for it to exit; output goes to `logFile` if provided, else is discarded.
+ */
+function invokeDirectBackground(spec, args, cwd, logFile) {
+  return new Promise((resolve, reject) => {
+    const useShell = process.platform === "win32" && spec.shell;
+    let stdio = "ignore";
+    if (logFile) {
+      try {
+        const fd = fs.openSync(logFile, "a");
+        stdio = ["ignore", fd, fd];
+      } catch (err) {
+        reject(err);
+        return;
+      }
+    }
+
+    let child;
+    try {
+      child = spawn(spec.binary, args, {
+        cwd,
+        env: process.env,
+        stdio,
+        detached: true,
+        windowsHide: true,
+        shell: useShell
+      });
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    child.on("error", (err) => reject(err));
+    child.unref();
+    resolve({ status: 0, background: true, pid: child.pid ?? null, logFile: logFile ?? null });
+  });
+}
+
 /**
  * Invoke a CLI binary directly as a fallback when the companion is a stub.
+ *
+ * `options.background`: if true, spawn detached and resolve immediately instead
+ * of blocking until the process exits (used for `--background` delegated tasks).
+ * `options.logFile`: where to send output when running in the background.
+ * `options.timeoutMs`: overrides the default synchronous-run timeout; falls back
+ * to the `CLAUDE_PLUGIN_DELEGATE_TIMEOUT_MS` env var, then 60s.
  */
 export function invokeDirect(agent, prompt, cwd, options = {}) {
   const spec = DIRECT_INVOCATION[agent];
@@ -124,10 +186,15 @@ export function invokeDirect(agent, prompt, cwd, options = {}) {
     throw new Error(`No direct invocation defined for agent "${agent}".`);
   }
 
-  const timeoutMs = options.timeoutMs ?? 60_000;
   const rawArgs = spec.args(prompt, cwd);
   const useShell = process.platform === "win32" && spec.shell;
   const args = useShell ? rawArgs.map(quoteForShell) : rawArgs;
+
+  if (options.background) {
+    return invokeDirectBackground(spec, args, cwd, options.logFile ?? null);
+  }
+
+  const timeoutMs = resolveTimeoutMs(options.timeoutMs);
 
   return new Promise((resolve, reject) => {
     const child = spawn(spec.binary, args, {
@@ -189,10 +256,59 @@ export function invokeDirect(agent, prompt, cwd, options = {}) {
 }
 
 /**
+ * Resolve the prompt to hand to a direct-fallback CLI invocation from the raw
+ * argv passed to `--delegate-to`.
+ *
+ * Prefers an explicit `--prompt=<text>` (unambiguous), then joins ALL
+ * positional args (an unquoted multi-word prompt is split across several
+ * argv entries - previously only the last word survived), then falls back
+ * to piped stdin.
+ */
+export function extractDelegatePrompt(argv) {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--prompt" && typeof argv[i + 1] === "string") {
+      return argv[i + 1];
+    }
+    if (arg.startsWith("--prompt=")) {
+      return arg.slice("--prompt=".length);
+    }
+  }
+  const positionalArgs = argv.filter((a) => !a.startsWith("--") && !a.startsWith("-"));
+  if (positionalArgs.length > 0) {
+    return positionalArgs.join(" ");
+  }
+  return readStdinIfPiped();
+}
+
+/** Parse an explicit `--timeout=<ms>` from delegate argv, if present. */
+export function extractDelegateTimeoutMs(argv) {
+  const arg = argv.find((a) => a.startsWith("--timeout="));
+  return arg ? Number(arg.slice("--timeout=".length)) : undefined;
+}
+
+/** Create a fresh log file path for a background-delegated task's output. */
+export function createDelegateLogFile(agent) {
+  const dir = path.join(os.tmpdir(), "agents-plugin-cc-delegate");
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, `${agent}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.log`);
+}
+
+const STUB_ERROR_PATTERN = /is a stub|not implemented|is not implemented|implement `?`?scripts?\//i;
+
+/**
  * Detect whether a companion script is a stub (returns its error output as
  * a hint to fall back to direct invocation).
+ *
+ * Only treated as a stub when the companion exited with status 1, its stderr
+ * matches the stub-error pattern, AND it produced no stdout. Matching on
+ * combined stdout+stderr text alone risked false positives whenever real task
+ * output happened to mention words like "not implemented".
  */
-export function isStubError(stderr, stdout) {
-  const combined = `${stderr}\n${stdout}`;
-  return /is a stub|not implemented|is not implemented|implement `?`?scripts?\//i.test(combined);
+export function isStubError(stderr, stdout, exitCode) {
+  return (
+    exitCode === 1 &&
+    STUB_ERROR_PATTERN.test(String(stderr ?? "")) &&
+    String(stdout ?? "").length === 0
+  );
 }

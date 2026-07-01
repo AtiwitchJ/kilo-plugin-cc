@@ -23,6 +23,17 @@ test("renderTaskResult: surfaces errors", () => {
   assert.match(out, /kilo not installed/);
 });
 
+test("renderTaskResult: defaults the output header to 'Kilo output'", () => {
+  const out = renderTaskResult({ text: "fixed it", failureMessage: "" }, { title: "Kilo Task" });
+  assert.match(out, /## Kilo output/);
+});
+
+test("renderTaskResult: honors an explicit agentName (bug #3 - was hard-coded to 'Kilo')", () => {
+  const out = renderTaskResult({ text: "fixed it", failureMessage: "" }, { title: "Claude Task", agentName: "Claude" });
+  assert.match(out, /## Claude output/);
+  assert.doesNotMatch(out, /## Kilo output/);
+});
+
 test("renderStatusReport: empty when no jobs", () => {
   const out = renderStatusReport({ jobs: [] });
   assert.match(out, /No kilo jobs/);
