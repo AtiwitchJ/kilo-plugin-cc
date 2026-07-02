@@ -1,0 +1,20 @@
+{
+  "name": "agents-plugin-cc-kilo",
+  "interface": {
+    "displayName": "Kilo Plugin"
+  },
+  "plugins": [
+    {
+      "name": "kilo",
+      "source": {
+        "source": "local",
+        "path": "./plugins/kilo"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

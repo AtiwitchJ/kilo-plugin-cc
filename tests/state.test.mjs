@@ -109,3 +109,24 @@ test("state: resolveStateFile points inside resolveStateDir", () => {
     assert.equal(path.dirname(stateFile), resolveStateDir(dir));
   });
 });
+
+test("state: resolveStateDir uses CODEX_PLUGIN_DATA when Claude data is absent", () => {
+  withTmpDir((dir) => {
+    fs.mkdirSync(path.join(dir, ".git"));
+    const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-codex-data-"));
+    const previousClaudeData = process.env.CLAUDE_PLUGIN_DATA;
+    const previousCodexData = process.env.CODEX_PLUGIN_DATA;
+    delete process.env.CLAUDE_PLUGIN_DATA;
+    process.env.CODEX_PLUGIN_DATA = pluginDataDir;
+    try {
+      const stateDir = resolveStateDir(dir);
+      assert.equal(stateDir.startsWith(path.join(pluginDataDir, "state")), true);
+    } finally {
+      fs.rmSync(pluginDataDir, { recursive: true, force: true });
+      if (previousClaudeData === undefined) delete process.env.CLAUDE_PLUGIN_DATA;
+      else process.env.CLAUDE_PLUGIN_DATA = previousClaudeData;
+      if (previousCodexData === undefined) delete process.env.CODEX_PLUGIN_DATA;
+      else process.env.CODEX_PLUGIN_DATA = previousCodexData;
+    }
+  });
+});

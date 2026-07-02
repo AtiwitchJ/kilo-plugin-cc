@@ -1,0 +1,24 @@
+{
+  "name": "kilo",
+  "version": "0.1.0",
+  "description": "Use Kilo to review code or delegate tasks.",
+  "author": {
+    "name": "agents-plugin-cc"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["kilo", "agent", "review", "delegation"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kilo",
+    "shortDescription": "Delegate coding work to Kilo.",
+    "longDescription": "Run Kilo setup, reviews, tasks, status checks, results, cancellation, and transfer flows through the bundled companion runtime.",
+    "developerName": "agents-plugin-cc",
+    "category": "Productivity",
+    "capabilities": ["Code review", "Task delegation", "Background jobs"],
+    "defaultPrompt": [
+      "Review my local changes with Kilo.",
+      "Ask Kilo to investigate this bug.",
+      "Show Kilo job status."
+    ]
+  }
+}
