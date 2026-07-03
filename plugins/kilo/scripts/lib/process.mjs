@@ -2,16 +2,26 @@ import { spawnSync } from "node:child_process";
 import process from "node:process";
 
 export function runCommand(command, args = [], options = {}) {
-  const result = spawnSync(command, args, {
+  const spawnOptions = {
     cwd: options.cwd,
     env: options.env,
     encoding: "utf8",
     input: options.input,
     maxBuffer: options.maxBuffer ?? 32 * 1024 * 1024,
     stdio: options.stdio ?? "pipe",
-    shell: process.platform === "win32" ? (process.env.SHELL || true) : false,
     windowsHide: true
-  });
+  };
+
+  let result = spawnSync(command, args, { ...spawnOptions, shell: false });
+
+  // On Windows, some CLIs only ship as .cmd/.bat/.ps1 shims, which Node cannot
+  // exec directly without a shell. Only fall back to shell:true when direct
+  // execution couldn't find the binary at all (ENOENT) — real .exe binaries
+  // must stay on shell:false so args pass through untouched instead of being
+  // naively re-concatenated into a shell command line.
+  if (process.platform === "win32" && result.error?.code === "ENOENT") {
+    result = spawnSync(command, args, { ...spawnOptions, shell: true });
+  }
 
   return {
     command,
