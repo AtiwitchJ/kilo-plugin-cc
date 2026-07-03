@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
+import { buildWindowsShellCommandLine } from "./win-quote.mjs";
+
 export function runCommand(command, args = [], options = {}) {
   const spawnOptions = {
     cwd: options.cwd,
@@ -20,7 +22,7 @@ export function runCommand(command, args = [], options = {}) {
   // must stay on shell:false so args pass through untouched instead of being
   // naively re-concatenated into a shell command line.
   if (process.platform === "win32" && result.error?.code === "ENOENT") {
-    result = spawnSync(command, args, { ...spawnOptions, shell: true });
+    result = spawnSync(buildWindowsShellCommandLine(command, args), { ...spawnOptions, shell: true });
   }
 
   return {
