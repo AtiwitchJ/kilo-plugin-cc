@@ -59,3 +59,28 @@ test("parseKiloEventStream: ignores non-JSON lines", () => {
   const result = parseKiloEventStream("not json\n{\"type\":\"message\",\"text\":\"ok\"}\n");
   assert.equal(result.text, "ok");
 });
+
+test("parseKiloEventStream: extracts text and sessionID from real kilo CLI event shape", () => {
+  const events = [
+    {
+      type: "step_start",
+      sessionID: "ses_0da0988ffffeOXAwQQ9Zc1NKLN",
+      part: { type: "step-start" }
+    },
+    {
+      type: "text",
+      sessionID: "ses_0da0988ffffeOXAwQQ9Zc1NKLN",
+      part: { type: "text", text: "OK connectivity confirmed." }
+    },
+    {
+      type: "step_finish",
+      sessionID: "ses_0da0988ffffeOXAwQQ9Zc1NKLN",
+      part: { type: "step-finish", reason: "stop" }
+    }
+  ]
+    .map((e) => JSON.stringify(e))
+    .join("\n");
+  const result = parseKiloEventStream(events);
+  assert.equal(result.sessionId, "ses_0da0988ffffeOXAwQQ9Zc1NKLN");
+  assert.equal(result.text, "OK connectivity confirmed.");
+});

@@ -159,9 +159,9 @@ function buildKiloArgs({ prompt, model, agent, variant, thinking, write, format,
  *
  * kilo emits NDJSON where each line is a JSON event. Event shapes vary by version,
  * but the keys we care about are reasonably stable:
- *   - session_id / session.id
- *   - type / event (e.g. "message", "tool_call", "result")
- *   - text / content (the assistant's text payload)
+ *   - session_id / session.id / sessionID (real CLI output uses flat camelCase "sessionID")
+ *   - type / event (e.g. "message", "tool_call", "result", "text")
+ *   - text / content / part.text (real CLI output nests text under "part.text")
  *   - error / error.message
  *
  * Returns:
@@ -179,6 +179,9 @@ export function parseKiloEventStream(stdout) {
     }
   };
 
+  const extractText = (parsed) =>
+    parsed.text ?? parsed.content ?? parsed.part?.text ?? parsed.part?.content ?? "";
+
   const lines = stdout.split(/\r?\n/);
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -194,22 +197,27 @@ export function parseKiloEventStream(stdout) {
     if (!sessionId && typeof parsed.session_id === "string") {
       acceptSessionId(parsed.session_id);
     }
+    if (!sessionId && typeof parsed.sessionID === "string") {
+      acceptSessionId(parsed.sessionID);
+    }
     if (!sessionId && parsed.session && typeof parsed.session.id === "string") {
       acceptSessionId(parsed.session.id);
     }
 
     const type = parsed.type ?? parsed.event ?? "";
-    if (type === "message" || type === "assistant" || type === "text") {
-      const text = parsed.text ?? parsed.content ?? "";
+    const partType = parsed.part?.type ?? "";
+    if (type === "message" || type === "assistant" || type === "text" || partType === "text") {
+      const text = extractText(parsed);
       if (typeof text === "string" && text.length > 0) {
         textChunks.push(text);
       }
     } else if (type === "result" || type === "final") {
-      const text = parsed.text ?? parsed.content ?? parsed.result ?? "";
+      const text = extractText(parsed) || parsed.result || "";
       if (typeof text === "string" && text.length > 0) {
         textChunks.push(text);
       }
       if (parsed.session_id) acceptSessionId(parsed.session_id);
+      if (parsed.sessionID) acceptSessionId(parsed.sessionID);
     } else if (type === "error") {
       error = parsed.error?.message ?? parsed.message ?? parsed.text ?? "unknown kilo error";
     }
@@ -244,7 +252,7 @@ function spawnKilo({ cwd, args, onProgress, logFile }) {
           if (!trimmed) continue;
           try {
             const evt = JSON.parse(trimmed);
-            const msg = evt.text ?? evt.message ?? evt.content;
+            const msg = evt.text ?? evt.message ?? evt.content ?? evt.part?.text ?? evt.part?.content;
             if (typeof msg === "string" && msg.length > 0) {
               onProgress({
                 message: msg.slice(0, 200),
