@@ -1,6 +1,6 @@
-# Kilo plugin for Claude Code
+# Kilo plugin for Claude Code and Codex
 
-This plugin is for Claude Code users who want to delegate code reviews or tasks to the
+This plugin is for Claude Code and Codex users who want to delegate code reviews or tasks to the
 **Kilo CLI** (`kilo`) — Kilo Code's autonomous coding agent. It's also the **reference
 implementation** other plugins in this family (`claude-plugin-cc`, `openclaw-plugin-cc`,
 `opencode-plugin-cc`, `antigravity-plugin-cc`, `cursor-plugin-cc`, `hermes-plugin-cc`,

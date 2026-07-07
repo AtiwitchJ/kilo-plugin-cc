@@ -1,6 +1,6 @@
 ---
 name: kilo-rescue
-description: Proactively use when Claude Code is stuck, wants a second implementation or diagnosis pass, needs a deeper root-cause investigation, or should hand a substantial coding task to Kilo through the shared runtime
+description: Proactively use when Claude Code or Codex is stuck, wants a second implementation or diagnosis pass, needs a deeper root-cause investigation, or should hand a substantial coding task to Kilo through the shared runtime
 model: sonnet
 tools: Bash
 skills:

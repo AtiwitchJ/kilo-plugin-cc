@@ -1,8 +1,8 @@
-# Kilo plugin for Claude Code
+# Kilo plugin for Claude Code and Codex
 
-Use [Kilo](https://kilo.ai) from inside Claude Code for code reviews or to delegate tasks.
+Use [Kilo](https://kilo.ai) from inside Claude Code and Codex for code reviews or to delegate tasks.
 
-This plugin is for Claude Code users who want an easy way to start using Kilo from the workflow
+This plugin is for Claude Code and Codex users who want an easy way to start using Kilo from the workflow
 they already have.
 
 > Part of the [agents-plugin-cc](../README.md) collection, alongside plugins for OpenCode,
